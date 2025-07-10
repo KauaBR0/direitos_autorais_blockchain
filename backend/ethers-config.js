@@ -1,20 +1,26 @@
 // ethers-config.js
 const { ethers } = require('ethers');
-const AuthChainRegistryABI = require('./AuthChainRegistry.json').abi; // Importe o ABI
+const AuthChainRegistryABI = require('./AuthChainRegistry.json').abi;
 
-// 1. Configurar o Provedor (conexão com o nó blockchain)
 const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
 
-// 2. Configurar a Carteira (signer) que fará as transações
-const wallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
-
-// 3. Instanciar o Contrato
-const contract = new ethers.Contract(
-    process.env.CONTRACT_ADDRESS,
-    AuthChainRegistryABI,
-    wallet // Conecta o contrato ao signer para poder enviar transações
+// Carteira do Criador
+const creatorWallet = new ethers.Wallet(process.env.CREATOR_PRIVATE_KEY, provider);
+const contractAsCreator = new ethers.Contract(
+  process.env.CONTRACT_ADDRESS,
+  AuthChainRegistryABI,
+  creatorWallet
 );
 
-console.log("Conectado ao contrato no endereço:", process.env.CONTRACT_ADDRESS);
+// Carteira do Comprador
+const userWallet = new ethers.Wallet(process.env.USER_PRIVATE_KEY, provider);
+const contractAsUser = new ethers.Contract(
+  process.env.CONTRACT_ADDRESS,
+  AuthChainRegistryABI,
+  userWallet
+);
 
-module.exports = { contract, provider };
+console.log("Conectado ao contrato com duas personas: Criador e Usuário.");
+
+// Exportamos ambas as instâncias
+module.exports = { contractAsCreator, contractAsUser, provider };

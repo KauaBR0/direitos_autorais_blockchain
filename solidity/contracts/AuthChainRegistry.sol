@@ -63,6 +63,10 @@ contract AuthChainRegistry is Ownable {
         emit WorkRegistered(newWorkId, msg.sender, title, ipfsHash, block.timestamp);
     }
 
+        function getWorkCount() public view returns (uint256) {
+             return _workIds.current();
+         }
+
     // Create a license for a work
     function createLicense(
         uint256 workId,
