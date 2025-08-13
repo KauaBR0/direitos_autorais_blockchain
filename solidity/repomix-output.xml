@@ -1,0 +1,574 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+.gitignore
+contracts/AuthChainRegistry.sol
+contracts/Lock.sol
+hardhat.config.js
+ignition/modules/deploy.js
+ignition/modules/Lock.js
+package.json
+README.md
+test/AuthChainRegistry.js
+test/Lock.js
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path=".gitignore">
+node_modules
+.env
+
+# Hardhat files
+/cache
+/artifacts
+
+# TypeChain files
+/typechain
+/typechain-types
+
+# solidity-coverage files
+/coverage
+/coverage.json
+
+# Hardhat Ignition default folder for deployments against a local node
+ignition/deployments/chain-31337
+</file>
+
+<file path="contracts/AuthChainRegistry.sol">
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/Counters.sol";
+
+contract AuthChainRegistry is Ownable {
+    using Counters for Counters.Counter;
+    Counters.Counter private _workIds;
+    Counters.Counter private _licenseIds;
+
+    // Struct for a Work
+    struct Work {
+        uint256 id;
+        address creator;
+        string title;
+        string ipfsHash; // Hash of the work stored on IPFS
+        string metadata; // Additional metadata (e.g., type, genre)
+        uint256 timestamp;
+    }
+
+    // Struct for a License
+    struct License {
+        uint256 id;
+        uint256 workId;
+        address licensee;
+        uint256 price; // Price in wei
+        uint256 duration; // Duration in seconds
+        string usageType; // e.g., "commercial", "non-commercial"
+        bool active;
+    }
+
+    // Mappings
+    mapping(uint256 => Work) public works;
+    mapping(uint256 => License) public licenses;
+    mapping(uint256 => uint256[]) public workToLicenses; // Maps work ID to its license IDs
+    mapping(address => uint256[]) public creatorWorks; // Maps creator address to their work IDs
+
+    // Events
+    event WorkRegistered(uint256 indexed workId, address indexed creator, string title, string ipfsHash, uint256 timestamp);
+    event LicenseCreated(uint256 indexed licenseId, uint256 indexed workId, address indexed licensee, uint256 price, uint256 duration, string usageType);
+    event LicenseActivated(uint256 indexed licenseId, uint256 indexed workId, address indexed licensee);
+    event RoyaltyDistributed(uint256 indexed workId, address indexed creator, uint256 amount);
+
+    constructor() Ownable() {
+        _workIds.increment(); // Start IDs at 1
+        _licenseIds.increment();
+    }
+
+    // Register a new work
+    function registerWork(string memory title, string memory ipfsHash, string memory metadata) public {
+        uint256 newWorkId = _workIds.current();
+        works[newWorkId] = Work({
+            id: newWorkId,
+            creator: msg.sender,
+            title: title,
+            ipfsHash: ipfsHash,
+            metadata: metadata,
+            timestamp: block.timestamp
+        });
+        creatorWorks[msg.sender].push(newWorkId);
+        _workIds.increment();
+        emit WorkRegistered(newWorkId, msg.sender, title, ipfsHash, block.timestamp);
+    }
+
+        function getWorkCount() public view returns (uint256) {
+             return _workIds.current();
+         }
+
+    // Create a license for a work
+    function createLicense(
+        uint256 workId,
+        uint256 price,
+        uint256 duration,
+        string memory usageType
+    ) public {
+        require(works[workId].creator == msg.sender, "Only creator can create licenses");
+        uint256 newLicenseId = _licenseIds.current();
+        licenses[newLicenseId] = License({
+            id: newLicenseId,
+            workId: workId,
+            licensee: address(0),
+            price: price,
+            duration: duration,
+            usageType: usageType,
+            active: false
+        });
+        workToLicenses[workId].push(newLicenseId);
+        _licenseIds.increment();
+        emit LicenseCreated(newLicenseId, workId, address(0), price, duration, usageType);
+    }
+
+    // Purchase and activate a license
+    function purchaseLicense(uint256 licenseId) public payable {
+        License storage license = licenses[licenseId];
+        require(!license.active, "License already active");
+        require(msg.value >= license.price, "Insufficient payment");
+        require(works[license.workId].id != 0, "Work does not exist");
+
+        license.licensee = msg.sender;
+        license.active = true;
+
+        // Distribute royalty to creator
+        address creator = works[license.workId].creator;
+        (bool sent, ) = creator.call{value: msg.value}("");
+        require(sent, "Royalty distribution failed");
+
+        emit LicenseActivated(licenseId, license.workId, msg.sender);
+        emit RoyaltyDistributed(license.workId, creator, msg.value);
+    }
+
+    // Get work details
+    function getWork(uint256 workId) public view returns (Work memory) {
+        require(works[workId].id != 0, "Work does not exist");
+        return works[workId];
+    }
+
+    // Get license details
+    function getLicense(uint256 licenseId) public view returns (License memory) {
+        require(licenses[licenseId].id != 0, "License does not exist");
+        return licenses[licenseId];
+    }
+
+    // Get all works by a creator
+    function getCreatorWorks(address creator) public view returns (uint256[] memory) {
+        return creatorWorks[creator];
+    }
+
+    // Get all licenses for a work
+    function getWorkLicenses(uint256 workId) public view returns (uint256[] memory) {
+        require(works[workId].id != 0, "Work does not exist");
+        return workToLicenses[workId];
+    }
+
+    // Withdraw contract balance (for admin tasks, e.g., fees)
+    function withdraw() public onlyOwner {
+        uint256 balance = address(this).balance;
+        (bool sent, ) = owner().call{value: balance}("");
+        require(sent, "Withdrawal failed");
+    }
+}
+</file>
+
+<file path="contracts/Lock.sol">
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.28;
+
+// Uncomment this line to use console.log
+// import "hardhat/console.sol";
+
+contract Lock {
+    uint public unlockTime;
+    address payable public owner;
+
+    event Withdrawal(uint amount, uint when);
+
+    constructor(uint _unlockTime) payable {
+        require(
+            block.timestamp < _unlockTime,
+            "Unlock time should be in the future"
+        );
+
+        unlockTime = _unlockTime;
+        owner = payable(msg.sender);
+    }
+
+    function withdraw() public {
+        // Uncomment this line, and the import of "hardhat/console.sol", to print a log in your terminal
+        // console.log("Unlock time is %o and block timestamp is %o", unlockTime, block.timestamp);
+
+        require(block.timestamp >= unlockTime, "You can't withdraw yet");
+        require(msg.sender == owner, "You aren't the owner");
+
+        emit Withdrawal(address(this).balance, block.timestamp);
+
+        owner.transfer(address(this).balance);
+    }
+}
+</file>
+
+<file path="hardhat.config.js">
+require("@nomicfoundation/hardhat-toolbox");
+
+/** @type import('hardhat/config').HardhatUserConfig */
+module.exports = {
+  solidity: "0.8.28",
+};
+</file>
+
+<file path="ignition/modules/deploy.js">
+// ignition/modules/deploy.js
+
+const { buildModule } = require("@nomicfoundation/hardhat-ignition/modules");
+
+module.exports = buildModule("AuthChainRegistryModule", (m) => {
+  // O construtor do seu contrato não tem argumentos, então o segundo parâmetro é um array vazio.
+  const authChain = m.contract("AuthChainRegistry", []);
+
+  // O Hardhat Ignition lida com o console.log e o processo de deploy automaticamente.
+  // Você não precisa do 'main()' nem do 'process.exit()'.
+  
+  return { authChain };
+});
+</file>
+
+<file path="ignition/modules/Lock.js">
+// This setup uses Hardhat Ignition to manage smart contract deployments.
+// Learn more about it at https://hardhat.org/ignition
+
+const { buildModule } = require("@nomicfoundation/hardhat-ignition/modules");
+
+const JAN_1ST_2030 = 1893456000;
+const ONE_GWEI = 1_000_000_000n;
+
+module.exports = buildModule("LockModule", (m) => {
+  const unlockTime = m.getParameter("unlockTime", JAN_1ST_2030);
+  const lockedAmount = m.getParameter("lockedAmount", ONE_GWEI);
+
+  const lock = m.contract("Lock", [unlockTime], {
+    value: lockedAmount,
+  });
+
+  return { lock };
+});
+</file>
+
+<file path="package.json">
+{
+  "name": "tcc",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^6.0.0",
+    "hardhat": "^2.25.0"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^4.9.3"
+  }
+}
+</file>
+
+<file path="README.md">
+# Sample Hardhat Project
+
+This project demonstrates a basic Hardhat use case. It comes with a sample contract, a test for that contract, and a Hardhat Ignition module that deploys that contract.
+
+Try running some of the following tasks:
+
+```shell
+npx hardhat help
+npx hardhat test
+REPORT_GAS=true npx hardhat test
+npx hardhat node
+npx hardhat ignition deploy ./ignition/modules/Lock.js
+```
+</file>
+
+<file path="test/AuthChainRegistry.js">
+const { expect } = require("chai");
+const { ethers } = require("hardhat");
+
+describe("AuthChainRegistry", function () {
+  let authChain, owner, creator, user;
+  const TITLE = "Test Work";
+  const IPFS_HASH = "QmTestHash123";
+  const METADATA = "type: music, genre: classical";
+  const PRICE = ethers.parseEther("0.1")
+  const DURATION = 86400; // 1 day in seconds
+  const USAGE_TYPE = "commercial";
+
+  beforeEach(async function () {
+    // Get signers
+    [owner, creator, user] = await ethers.getSigners();
+    
+    // Deploy contract
+    const AuthChainRegistry = await ethers.getContractFactory("AuthChainRegistry");
+    authChain = await AuthChainRegistry.deploy();
+    await authChain.waitForDeployment();
+  });
+
+  it("should deploy with correct owner", async function () {
+    expect(await authChain.owner()).to.equal(owner.address);
+  });
+
+  it("should allow creator to register a work", async function () {
+    await authChain.connect(creator).registerWork(TITLE, IPFS_HASH, METADATA);
+    const work = await authChain.getWork(1);
+    
+    expect(work.id).to.equal(1);
+    expect(work.creator).to.equal(creator.address);
+    expect(work.title).to.equal(TITLE);
+    expect(work.ipfsHash).to.equal(IPFS_HASH);
+    expect(work.metadata).to.equal(METADATA);
+    expect(work.timestamp).to.be.gt(0);
+
+    const creatorWorks = await authChain.getCreatorWorks(creator.address);
+    expect(creatorWorks.length).to.equal(1);
+    expect(creatorWorks[0]).to.equal(1);
+  });
+
+  it("should allow creator to create a license", async function () {
+    await authChain.connect(creator).registerWork(TITLE, IPFS_HASH, METADATA);
+    await authChain.connect(creator).createLicense(1, PRICE, DURATION, USAGE_TYPE);
+    
+    const license = await authChain.getLicense(1);
+    expect(license.id).to.equal(1);
+    expect(license.workId).to.equal(1);
+    expect(license.price).to.equal(PRICE);
+    expect(license.duration).to.equal(DURATION);
+    expect(license.usageType).to.equal(USAGE_TYPE);
+    expect(license.active).to.be.false;
+    
+    const workLicenses = await authChain.getWorkLicenses(1);
+    expect(workLicenses.length).to.equal(1);
+    expect(workLicenses[0]).to.equal(1);
+  });
+
+  it("should allow user to purchase a license and distribute royalty", async function () {
+    await authChain.connect(creator).registerWork(TITLE, IPFS_HASH, METADATA);
+    await authChain.connect(creator).createLicense(1, PRICE, DURATION, USAGE_TYPE);
+    
+    const creatorBalanceBefore = await ethers.provider.getBalance(creator.address);
+    await authChain.connect(user).purchaseLicense(1, { value: PRICE });
+    
+    const license = await authChain.getLicense(1);
+    expect(license.licensee).to.equal(user.address);
+    expect(license.active).to.be.true;
+    
+    const creatorBalanceAfter = await ethers.provider.getBalance(creator.address);
+    expect(creatorBalanceAfter - creatorBalanceBefore).to.equal(PRICE);
+  });
+
+  it("should revert if non-creator tries to create a license", async function () {
+    await authChain.connect(creator).registerWork(TITLE, IPFS_HASH, METADATA);
+    await expect(
+      authChain.connect(user).createLicense(1, PRICE, DURATION, USAGE_TYPE)
+    ).to.be.revertedWith("Only creator can create licenses");
+  });
+
+  it("should revert if insufficient payment for license", async function () {
+    await authChain.connect(creator).registerWork(TITLE, IPFS_HASH, METADATA);
+    await authChain.connect(creator).createLicense(1, PRICE, DURATION, USAGE_TYPE);
+    await expect(
+      authChain.connect(user).purchaseLicense(1, { value: ethers.parseEther("0.05") })
+    ).to.be.revertedWith("Insufficient payment");
+  });
+
+  
+
+  it("should revert if non-owner tries to withdraw", async function () {
+    await expect(authChain.connect(user).withdraw()).to.be.revertedWith("Ownable: caller is not the owner");
+  });
+
+  it("should revert for non-existent work or license", async function () {
+    await expect(authChain.getWork(999)).to.be.revertedWith("Work does not exist");
+    await expect(authChain.getLicense(999)).to.be.revertedWith("License does not exist");
+  });
+});
+</file>
+
+<file path="test/Lock.js">
+const {
+  time,
+  loadFixture,
+} = require("@nomicfoundation/hardhat-toolbox/network-helpers");
+const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
+const { expect } = require("chai");
+
+describe("Lock", function () {
+  // We define a fixture to reuse the same setup in every test.
+  // We use loadFixture to run this setup once, snapshot that state,
+  // and reset Hardhat Network to that snapshot in every test.
+  async function deployOneYearLockFixture() {
+    const ONE_YEAR_IN_SECS = 365 * 24 * 60 * 60;
+    const ONE_GWEI = 1_000_000_000;
+
+    const lockedAmount = ONE_GWEI;
+    const unlockTime = (await time.latest()) + ONE_YEAR_IN_SECS;
+
+    // Contracts are deployed using the first signer/account by default
+    const [owner, otherAccount] = await ethers.getSigners();
+
+    const Lock = await ethers.getContractFactory("Lock");
+    const lock = await Lock.deploy(unlockTime, { value: lockedAmount });
+
+    return { lock, unlockTime, lockedAmount, owner, otherAccount };
+  }
+
+  describe("Deployment", function () {
+    it("Should set the right unlockTime", async function () {
+      const { lock, unlockTime } = await loadFixture(deployOneYearLockFixture);
+
+      expect(await lock.unlockTime()).to.equal(unlockTime);
+    });
+
+    it("Should set the right owner", async function () {
+      const { lock, owner } = await loadFixture(deployOneYearLockFixture);
+
+      expect(await lock.owner()).to.equal(owner.address);
+    });
+
+    it("Should receive and store the funds to lock", async function () {
+      const { lock, lockedAmount } = await loadFixture(
+        deployOneYearLockFixture
+      );
+
+      expect(await ethers.provider.getBalance(lock.target)).to.equal(
+        lockedAmount
+      );
+    });
+
+    it("Should fail if the unlockTime is not in the future", async function () {
+      // We don't use the fixture here because we want a different deployment
+      const latestTime = await time.latest();
+      const Lock = await ethers.getContractFactory("Lock");
+      await expect(Lock.deploy(latestTime, { value: 1 })).to.be.revertedWith(
+        "Unlock time should be in the future"
+      );
+    });
+  });
+
+  describe("Withdrawals", function () {
+    describe("Validations", function () {
+      it("Should revert with the right error if called too soon", async function () {
+        const { lock } = await loadFixture(deployOneYearLockFixture);
+
+        await expect(lock.withdraw()).to.be.revertedWith(
+          "You can't withdraw yet"
+        );
+      });
+
+      it("Should revert with the right error if called from another account", async function () {
+        const { lock, unlockTime, otherAccount } = await loadFixture(
+          deployOneYearLockFixture
+        );
+
+        // We can increase the time in Hardhat Network
+        await time.increaseTo(unlockTime);
+
+        // We use lock.connect() to send a transaction from another account
+        await expect(lock.connect(otherAccount).withdraw()).to.be.revertedWith(
+          "You aren't the owner"
+        );
+      });
+
+      it("Shouldn't fail if the unlockTime has arrived and the owner calls it", async function () {
+        const { lock, unlockTime } = await loadFixture(
+          deployOneYearLockFixture
+        );
+
+        // Transactions are sent using the first signer by default
+        await time.increaseTo(unlockTime);
+
+        await expect(lock.withdraw()).not.to.be.reverted;
+      });
+    });
+
+    describe("Events", function () {
+      it("Should emit an event on withdrawals", async function () {
+        const { lock, unlockTime, lockedAmount } = await loadFixture(
+          deployOneYearLockFixture
+        );
+
+        await time.increaseTo(unlockTime);
+
+        await expect(lock.withdraw())
+          .to.emit(lock, "Withdrawal")
+          .withArgs(lockedAmount, anyValue); // We accept any value as `when` arg
+      });
+    });
+
+    describe("Transfers", function () {
+      it("Should transfer the funds to the owner", async function () {
+        const { lock, unlockTime, lockedAmount, owner } = await loadFixture(
+          deployOneYearLockFixture
+        );
+
+        await time.increaseTo(unlockTime);
+
+        await expect(lock.withdraw()).to.changeEtherBalances(
+          [owner, lock],
+          [lockedAmount, -lockedAmount]
+        );
+      });
+    });
+  });
+});
+</file>
+
+</files>

@@ -23,4 +23,4 @@ const contractAsUser = new ethers.Contract(
 console.log("Conectado ao contrato com duas personas: Criador e Usuário.");
 
 // Exportamos ambas as instâncias
-module.exports = { contractAsCreator, contractAsUser, provider };
+module.exports = { contractAsCreator, contractAsUser, provider, userWallet  };

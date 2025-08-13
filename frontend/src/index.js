@@ -1,16 +1,17 @@
 // src/index.js
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { ChakraProvider } from '@chakra-ui/react'; // Importe
 import App from './App';
-import { system } from "@chakra-ui/react/preset";
-
+import { ChakraProvider } from "@chakra-ui/react";
+import { AuthProvider } from './AuthContext'; // <<<--- IMPORTE AQUI
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <React.StrictMode>
-    <ChakraProvider value={system}>
-      <App />
-    </ChakraProvider>
+    <AuthProvider> {/* // <<<--- ENVOLVA A APLICAÇÃO */}
+      <ChakraProvider>
+        <App />
+      </ChakraProvider>
+    </AuthProvider> {/* // <<<--- FIM DO "ABRAÇO" */}
   </React.StrictMode>
 );

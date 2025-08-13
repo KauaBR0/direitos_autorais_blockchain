@@ -2,10 +2,8 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import {
-    Box, Button, Input, VStack, Heading,
+    Box, Button, Input, VStack, Heading, Alert, AlertIcon, FormControl, FormLabel
 } from '@chakra-ui/react';
-import { Alert, AlertIcon } from '@chakra-ui/alert';
-import { FormControl, FormLabel } from '@chakra-ui/form-control';
 
 
 function RegisterWorkForm() {

@@ -1,20 +1,23 @@
-// src/CreateLicenseForm.js
 import React, { useState } from 'react';
 import axios from 'axios';
+import {
+    Box, Button, Input, VStack, Heading, HStack, Select, useToast, FormControl, FormLabel
+} from '@chakra-ui/react';
 
-// Este componente recebe o ID da obra e uma função para fechar o modal
+
+
 function CreateLicenseForm({ workId, onClose }) {
     const [price, setPrice] = useState('');
     const [duration, setDuration] = useState('');
     const [usageType, setUsageType] = useState('commercial');
-    const [statusMessage, setStatusMessage] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const toast = useToast();
 
     const handleSubmit = async (event) => {
         event.preventDefault();
-        setStatusMessage('Criando licença, por favor aguarde...');
+        setIsLoading(true);
 
         try {
-            // A duração em dias será convertida para segundos
             const durationInSeconds = parseInt(duration) * 86400;
 
             const response = await axios.post('http://localhost:3001/api/licenses', {
@@ -23,40 +26,75 @@ function CreateLicenseForm({ workId, onClose }) {
                 duration: durationInSeconds,
                 usageType: usageType
             });
+            
+            toast({
+                title: 'Licença Criada com Sucesso!',
+                description: `Hash: ${response.data.transactionHash.substring(0, 20)}...`,
+                status: 'success',
+                duration: 9000,
+                isClosable: true,
+            });
 
-            setStatusMessage(`Licença criada com sucesso! Hash: ${response.data.transactionHash}`);
-            setTimeout(onClose, 2000); // Fecha o modal após 2 segundos
+            setTimeout(onClose, 1000);
 
         } catch (error) {
             const errorMessage = error.response?.data?.message || error.message;
-            setStatusMessage(`Erro: ${errorMessage}`);
+            toast({
+                title: 'Erro ao Criar Licença.',
+                description: errorMessage,
+                status: 'error',
+                duration: 9000,
+                isClosable: true,
+            });
+        } finally {
+            setIsLoading(false);
         }
     };
 
     return (
-        <div style={{ background: '#333', padding: '20px', borderRadius: '8px', zIndex: 100 }}>
-            <h3>Criar Licença para Obra ID: {workId}</h3>
-            <form onSubmit={handleSubmit}>
-                <div style={{ marginBottom: '10px' }}>
-                    <label>Preço (em ETH):</label><br />
-                    <input type="text" value={price} onChange={e => setPrice(e.target.value)} required />
-                </div>
-                <div style={{ marginBottom: '10px' }}>
-                    <label>Duração (em dias):</label><br />
-                    <input type="number" value={duration} onChange={e => setDuration(e.target.value)} required />
-                </div>
-                <div style={{ marginBottom: '10px' }}>
-                    <label>Tipo de Uso:</label><br />
-                    <select value={usageType} onChange={e => setUsageType(e.target.value)}>
-                        <option value="commercial">Comercial</option>
-                        <option value="non-commercial">Não Comercial</option>
-                    </select>
-                </div>
-                <button type="submit">Confirmar Licença</button>
-                <button type="button" onClick={onClose} style={{ marginLeft: '10px' }}>Cancelar</button>
-            </form>
-            {statusMessage && <p>{statusMessage}</p>}
-        </div>
+        // Usando o Box do Chakra para o container do formulário
+        <Box bg="gray.700" color="white" p={6} borderRadius="lg" w="full" maxW="400px">
+            <VStack as="form" onSubmit={handleSubmit} spacing={4}>
+                <Heading size="md">Criar Licença para Obra ID: {workId}</Heading>
+                
+                <FormControl isRequired>
+                    <FormLabel>Preço (em ETH):</FormLabel>
+                    <Input 
+                        placeholder="Ex: 0.1"
+                        type="number" 
+                        step="0.001"
+                        value={price} 
+                        onChange={e => setPrice(e.target.value)} 
+                    />
+                </FormControl>
+
+                <FormControl isRequired>
+                    <FormLabel>Duração (em dias):</FormLabel>
+                    <Input 
+                        placeholder="Ex: 365"
+                        type="number" 
+                        value={duration} 
+                        onChange={e => setDuration(e.target.value)} 
+                    />
+                </FormControl>
+
+                <FormControl isRequired>
+                    <FormLabel>Tipo de Uso:</FormLabel>
+                    <Select value={usageType} onChange={e => setUsageType(e.target.value)}>
+                        <option style={{ color: 'black' }} value="commercial">Comercial</option>
+                        <option style={{ color: 'black' }} value="non-commercial">Não Comercial</option>
+                    </Select>
+                </FormControl>
+                
+                <HStack w="full" justify="flex-end" mt={4}>
+                    <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+                    <Button type="submit" colorScheme="teal" isLoading={isLoading}>
+                        Confirmar Licença
+                    </Button>
+                </HStack>
+
+            </VStack>
+        </Box>
     );
 }
 

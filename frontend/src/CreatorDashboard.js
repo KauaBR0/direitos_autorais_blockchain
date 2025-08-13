@@ -5,11 +5,8 @@ import CreateLicenseForm from './CreateLicenseForm';
 
 // Imports do Chakra
 import {
-    Box, Heading, Text, Button, Link, Spinner
+    Box, Heading, Text, Button, Link, Spinner, Table, Thead, Tbody, Tr, Th, Td, TableContainer
 } from '@chakra-ui/react';
-import {
-    Table, Thead, Tbody, Tr, Th, Td, TableContainer
-} from '@chakra-ui/table';
 
 function CreatorDashboard() {
     const [works, setWorks] = useState([]);

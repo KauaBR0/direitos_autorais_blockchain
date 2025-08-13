@@ -2,9 +2,9 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const { ethers } = require('ethers'); // Certifique-se que ethers está no topo se ainda não estiver
-const { contract } = require('./ethers-config.js'); // Importa o contrato instanciado
-const { contractAsCreator, contractAsUser } = require('./ethers-config.js');
+const { ethers } = require('ethers'); 
+const { contract } = require('./ethers-config.js'); 
+const { contractAsCreator, contractAsUser, provider, userWallet } = require('./ethers-config.js');
 
 
 const app = express();
@@ -12,6 +12,9 @@ const PORT = process.env.PORT || 3001;
 
 app.use(cors());
 app.use(express.json());
+
+let isPurchaseInProgress = false;
+
 
 // ROTA PARA BUSCAR UMA OBRA
 app.get('/api/works/:id', async (req, res) => {
@@ -107,44 +110,56 @@ app.post('/api/licenses', async (req, res) => {
   }
 });
 
-// ROTA PARA UM USUÁRIO COMPRAR UMA LICENÇA
 app.post('/api/licenses/purchase/:licenseId', async (req, res) => {
-  try {
-    const { licenseId } = req.params;
-
-    console.log(`Usuário tentando comprar a licença ID: ${licenseId}`);
-
-    // 1. Primeiro, usamos a instância de LEITURA para buscar os detalhes da licença
-    // A função getLicense não precisa de um signer, então qualquer instância funciona.
-    const license = await contractAsCreator.getLicense(licenseId);
-
-    if (license.id === 0n) {
-      return res.status(404).json({ message: "Licença não encontrada." });
-    }
-    if (license.active) {
-        return res.status(400).json({ message: "Esta licença já está ativa." });
+    // PONTO 1: VERIFICA A TRAVA
+    if (isPurchaseInProgress) {
+        console.log("--> Compra já em andamento. Rejeitando nova requisição.");
+        // Retorna um erro específico para "Muitas Requisições"
+        return res.status(429).json({ message: "Processando outra compra. Tente novamente em alguns instantes." });
     }
 
-    const priceInWei = license.price;
-    console.log(`Preço da licença é ${ethers.formatEther(priceInWei)} ETH. Enviando transação...`);
+    try {
+        // PONTO 2: ATIVA A TRAVA
+        isPurchaseInProgress = true; 
 
-    // 2. Usamos a instância do USUÁRIO para chamar a função de compra
-    const tx = await contractAsUser.purchaseLicense(licenseId, {
-      value: priceInWei // Enviamos o valor junto com a transação
-    });
+        const { licenseId } = req.params;
+        console.log(`Iniciando processamento da compra para a licença ID: ${licenseId}`);
 
-    // 3. Espera a transação ser minerada
-    await tx.wait();
+        const license = await contractAsCreator.getLicense(licenseId);
 
-    res.status(200).json({ message: "Licença comprada com sucesso!", transactionHash: tx.hash });
+        if (license.id === 0n) {
+            return res.status(404).json({ message: "Licença não encontrada." });
+        }
+        if (license.active) {
+            return res.status(400).json({ message: "Esta licença já foi comprada." });
+        }
 
-  } catch (error) {
-    console.error("Erro ao comprar licença:", error);
-    if (error.reason) {
-      return res.status(400).json({ message: "Erro de contrato: " + error.reason });
+        const priceInWei = license.price;
+        const latestNonce = await provider.getTransactionCount(userWallet.address);
+
+        console.log(`Enviando transação do comprador (${userWallet.address}) com nonce: ${latestNonce}`);
+
+        const tx = await contractAsUser.purchaseLicense(licenseId, {
+          value: priceInWei,
+          nonce: latestNonce
+        });
+
+        await tx.wait();
+
+        console.log(`Licença ${licenseId} comprada com sucesso!`);
+        res.status(200).json({ message: "Licença comprada com sucesso!", transactionHash: tx.hash });
+
+    } catch (error) {
+        console.error("Erro durante a compra:", error.shortMessage || error.message);
+        if (error.reason) {
+          return res.status(400).json({ message: "Erro de contrato: " + error.reason });
+        }
+        res.status(500).json({ message: "Erro interno no servidor." });
+    } finally {
+        // PONTO 3: LIBERA A TRAVA, não importa se deu sucesso ou erro
+        console.log("--> Processo de compra finalizado. Liberando a trava.");
+        isPurchaseInProgress = false;
     }
-    res.status(500).json({ message: "Erro interno no servidor." });
-  }
 });
 
 // ROTA PARA BUSCAR TODAS AS OBRAS DE UM CRIADOR ESPECÍFICO
